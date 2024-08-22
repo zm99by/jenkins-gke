@@ -1,41 +1,33 @@
+terraform {
+  required_version = ">= 1.0.0"
+
+  backend "gcs" {
+    bucket = "your-terraform-state-bucket"
+    prefix = "jenkins-gke"
+  }
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 4.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.0"
+    }
+  }
+}
+
 provider "google" {
   project = var.project_id
   region  = var.region
 }
 
-resource "google_container_cluster" "primary" {
-  name     = var.cluster_name
-  location = var.region
-
-  node_config {
-    machine_type = var.machine_type
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform",
-    ]
-  }
-
-  initial_node_count = var.node_count
-}
-
-resource "google_container_node_pool" "primary_nodes" {
-  cluster    = google_container_cluster.primary.name
-  location   = google_container_cluster.primary.location
-  node_count = var.node_count
-
-  node_config {
-    machine_type = var.machine_type
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform",
-    ]
-  }
-}
-
-terraform {
-  backend "gcs" {
-    bucket = var.bucket
-    prefix = "jenkins-gke"
-  }
-}
+data "google_client_config" "default" {}
 
 provider "kubernetes" {
   host                   = google_container_cluster.primary.endpoint
@@ -43,102 +35,26 @@ provider "kubernetes" {
   token                  = data.google_client_config.default.access_token
 }
 
-resource "kubernetes_namespace" "jenkins" {
-  metadata {
-    name = "jenkins"
-  }
+# Модуль для создания GKE кластера
+module "gke" {
+  source  = "./modules/gke"
+  project_id = var.project_id
+  region     = var.region
+  cluster_name = var.cluster_name
+  node_count   = var.node_count
+  machine_type = var.machine_type
 }
 
-resource "kubernetes_deployment" "jenkins" {
-  metadata {
-    name      = "jenkins"
-    namespace = kubernetes_namespace.jenkins.metadata[0].name
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "jenkins"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "jenkins"
-        }
-      }
-
-      spec {
-        container {
-          name  = "jenkins"
-          image = "jenkins/jenkins:lts"
-
-          ports {
-            container_port = 8080
-          }
-
-          resources {
-            limits {
-              memory = "1024Mi"
-              cpu    = "500m"
-            }
-          }
-
-          volume_mount {
-            name       = "jenkins-home"
-            mount_path = "/var/jenkins_home"
-          }
-        }
-
-        volume {
-          name = "jenkins-home"
-
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim.jenkins_pvc.metadata[0].name
-          }
-        }
-      }
-    }
-  }
+# Модуль для развёртывания Jenkins
+module "jenkins" {
+  source  = "./modules/jenkins"
+  namespace = "jenkins"
 }
 
-resource "kubernetes_service" "jenkins" {
-  metadata {
-    name      = "jenkins"
-    namespace = kubernetes_namespace.jenkins.metadata[0].name
-  }
-
-  spec {
-    selector = {
-      app = "jenkins"
-    }
-
-    type = "LoadBalancer"
-
-    port {
-      port        = 8080
-      target_port = 8080
-    }
-  }
-}
-
-resource "kubernetes_persistent_volume_claim" "jenkins_pvc" {
-  metadata {
-    name      = "jenkins-pvc"
-    namespace = kubernetes_namespace.jenkins.metadata[0].name
-  }
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-
-    resources {
-      requests = {
-        storage = "10Gi"
-      }
-    }
-  }
+# Модуль для Kubernetes ресурсов (например, Secret)
+module "kubernetes" {
+  source  = "./modules/kubernetes"
+  namespace = "jenkins"
+  jenkins_admin_password = module.jenkins.admin_password
 }
 
