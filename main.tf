@@ -29,3 +29,10 @@ resource "google_container_node_pool" "primary_nodes" {
     ]
   }
 }
+
+terraform {
+  backend "gcs" {
+    bucket = "your-terraform-state-bucket"
+    prefix = "jenkins-gke"
+  }
+}
