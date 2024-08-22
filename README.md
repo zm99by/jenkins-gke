@@ -9,6 +9,21 @@ jenkins-gke/
 ├── main.tf
 ├── outputs.tf
 ├── variables.tf
-└── terraform.tfvars
+├── terraform.tfvars
+├── .gitignore
+├── modules/
+│   ├── gke/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   ├── jenkins/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   └── kubernetes/
+│       ├── main.tf
+│       ├── variables.tf
+│       ├── outputs.tf
+
 
 ```
